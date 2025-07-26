@@ -1,48 +1,63 @@
 import React, { useState } from 'react';
 
 const HabitTracker = () => {
-  // Generate exactly 365 days of sample data
-  const generateYearData = (year = 2024) => {
+  // Get today's date
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const habitStartDate = new Date(2025, 6, 21); // July 21st, 2025
+  
+  const [hoveredDay, setHoveredDay] = useState(null);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  
+  // Generate data from year start to today - using useState to prevent regeneration
+  const [habitData] = useState(() => {
     const data = [];
-    const startDate = new Date(year, 0, 1); // January 1st
+    const startDate = new Date(currentYear, 0, 1); // January 1st
+    const endDate = today; // Today's date
     
-    for (let i = 0; i < 365; i++) {
-      const date = new Date(startDate);
-      date.setDate(startDate.getDate() + i);
-      
-      const dayOfWeek = date.getDay();
+    let currentDate = new Date(startDate);
+    while (currentDate <= endDate) {
+      const dayOfWeek = currentDate.getDay();
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-      const missRate = isWeekend ? 0.3 : 0.15; // Higher miss rate on weekends
       
-      const random = Math.random();
       let completionType;
       
-      if (random < missRate) {
+      // Before habit start date, everything is marked as missed
+      if (currentDate < habitStartDate) {
         completionType = 'miss';
       } else {
-        // Distribute the completions across early, midday, evening
-        const timeRandom = Math.random();
-        if (timeRandom < 0.33) {
-          completionType = 'early';
-        } else if (timeRandom < 0.66) {
-          completionType = 'midday';
+        // After habit start date, use random generation
+        const missRate = isWeekend ? 0.3 : 0.15; // Higher miss rate on weekends
+        const random = Math.random();
+        
+        if (random < missRate) {
+          completionType = 'miss';
         } else {
-          completionType = 'evening';
+          // Distribute the completions across early, midday, evening
+          const timeRandom = Math.random();
+          if (timeRandom < 0.33) {
+            completionType = 'early';
+          } else if (timeRandom < 0.66) {
+            completionType = 'midday';
+          } else {
+            completionType = 'evening';
+          }
         }
       }
       
       data.push({
-        date: date.toISOString().split('T')[0],
-        completion: completionType
+        date: currentDate.toISOString().split('T')[0],
+        completion: completionType,
+        month: currentDate.getMonth(),
+        dayOfMonth: currentDate.getDate()
       });
+      
+      // Move to next day
+      currentDate = new Date(currentDate);
+      currentDate.setDate(currentDate.getDate() + 1);
     }
     return data;
-  };
-
-  const habitData = generateYearData(2024);
-
-  const [hoveredDay, setHoveredDay] = useState(null);
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  });
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
@@ -54,7 +69,8 @@ const HabitTracker = () => {
     });
   };
 
-  const formatCompletion = (completion) => {
+  const formatCompletion = (completion, date) => {
+    if (new Date(date) < new Date(2025, 6, 21)) return 'Not tracked yet';
     if (completion === 'miss') return 'Missed';
     return `Completed ${completion}`;
   };
@@ -76,9 +92,32 @@ const HabitTracker = () => {
   const weeks = [];
   let currentWeek = [];
   
+  // Track which week index each month starts at
+  const monthStartWeeks = {};
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  
+  // Add padding for the first week if needed
+  if (habitData.length > 0) {
+    const firstDate = new Date(habitData[0].date);
+    const firstDayOfWeek = firstDate.getDay();
+    
+    // Add empty padding days if the year doesn't start on Sunday
+    for (let i = 0; i < firstDayOfWeek; i++) {
+      currentWeek.push({ empty: true });
+    }
+  }
+  
   habitData.forEach((day, index) => {
     const date = new Date(day.date);
     const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
+    const dayOfMonth = date.getDate();
+    
+    // Track the first week of each month
+    if (dayOfMonth === 1) {
+      // Account for current week position
+      const weekPosition = weeks.length + (currentWeek.length > 0 ? 1 : 0) - 1;
+      monthStartWeeks[day.month] = Math.max(0, weekPosition);
+    }
     
     // Start a new week on Sunday or if we have 7 days
     if (dayOfWeek === 0 && currentWeek.length > 0) {
@@ -96,21 +135,49 @@ const HabitTracker = () => {
 
   return (
     <div className="p-6 bg-gray-900 min-h-screen">
-      <h2 className="text-2xl font-bold mb-6 text-white">Daily Habit Tracker</h2>
+      <h2 className="text-2xl font-bold mb-6 text-white" style={{ fontFamily: 'Georgia, serif' }}>
+        Baseline Conditioning
+      </h2>
       
       <div className="relative">
+        {/* Month indicators */}
+        <div className="flex gap-1 mb-2 relative" style={{ paddingLeft: '2px' }}>
+          {Object.entries(monthStartWeeks).map(([monthIndex, weekIndex]) => (
+            <div
+              key={monthIndex}
+              className="absolute text-xs text-gray-400"
+              style={{
+                left: `${weekIndex * 16}px`, // 12px width + 4px gap
+                fontFamily: 'Georgia, serif'
+              }}
+            >
+              {monthNames[parseInt(monthIndex)]}
+            </div>
+          ))}
+        </div>
+        
         {/* Main grid container - vertical columns */}
-        <div className="flex gap-1 max-w-4xl">
+        <div className="flex gap-1 max-w-4xl mt-6">
           {weeks.map((week, weekIndex) => (
             <div 
               key={weekIndex} 
               className="flex flex-col gap-1"
               style={{
-                // Stagger every other column up for tighter packing
-                marginTop: weekIndex % 2 === 1 ? '-6px' : '0px'
+                // Stagger every other column up for tighter packing (but not the first column with padding)
+                marginTop: weekIndex % 2 === 1 && weekIndex > 0 ? '-6px' : '0px'
               }}
             >
               {week.map((day, dayIndex) => {
+                // Handle empty padding days
+                if (day.empty) {
+                  return (
+                    <div
+                      key={`empty-${weekIndex}-${dayIndex}`}
+                      className="w-3 h-3"
+                    />
+                  );
+                }
+                
                 return (
                   <div
                     key={day.date}
@@ -118,13 +185,15 @@ const HabitTracker = () => {
                   >
                     <div
                       className={`w-3 h-3 rounded-full cursor-pointer transition-all duration-200 hover:scale-125 ${
-                        day.completion === 'miss' 
+                        new Date(day.date) < new Date(2025, 6, 21)
+                          ? 'bg-gray-700 hover:bg-gray-600' // Pre-tracking period
+                          : day.completion === 'miss' 
                           ? 'bg-gray-600 hover:bg-gray-500'
                           : day.completion === 'early'
-                          ? 'bg-blue-500 hover:bg-blue-300'
+                          ? 'bg-blue-500 hover:bg-blue-400'
                           : day.completion === 'midday'
-                          ? 'bg-blue-600 hover:bg-blue-400'
-                          : 'bg-blue-700 hover:bg-blue-500' // evening
+                          ? 'bg-blue-600 hover:bg-blue-500'
+                          : 'bg-blue-700 hover:bg-blue-600' // evening
                       }`}
                       onMouseEnter={(e) => handleMouseEnter(day, e)}
                       onMouseMove={handleMouseMove}
@@ -148,7 +217,7 @@ const HabitTracker = () => {
             }}
           >
             <div>{formatDate(hoveredDay.date)}</div>
-            <div className="text-xs text-gray-300">{formatCompletion(hoveredDay.completion)}</div>
+            <div className="text-xs text-gray-300">{formatCompletion(hoveredDay.completion, hoveredDay.date)}</div>
           </div>
         )}
       </div>
@@ -156,7 +225,7 @@ const HabitTracker = () => {
       {/* Stats */}
       <div className="mt-6 text-sm text-gray-300">
         <span>
-          {habitData.filter(day => day.completion !== 'miss').length} habits completed out of {habitData.length} days
+          {habitData.filter(day => day.completion !== 'miss').length} days completed out of {habitData.length} days tracked
           ({Math.round((habitData.filter(day => day.completion !== 'miss').length / habitData.length) * 100)}% completion rate)
         </span>
         <div className="mt-2 flex gap-4">
